@@ -1,4 +1,13 @@
 from config import conexao
+from mysql.connector import IntegrityError
+
+
+def _ler_quantidade(valor):
+    try:
+        quantidade = int(valor)
+    except ValueError:
+        return None
+    return quantidade if 0 <= quantidade <= 2_147_483_647 else None
 
 def adicionar_livro():
     conn = conexao.conectar()
@@ -24,8 +33,9 @@ def adicionar_livro():
             cursor.close()
             conn.close()
             return
-        if not quantidade.strip():
-            print("Quantidade de exemplares não pode ser vazia.")
+        quantidade = _ler_quantidade(quantidade)
+        if quantidade is None:
+            print("Quantidade deve ser um número inteiro maior ou igual a zero.")
             cursor.close()
             conn.close()
             return
@@ -41,8 +51,11 @@ def adicionar_livro():
         elif not categoria_existente:
             print("Categoria não encontrada.")
         else:
-            cursor.execute("Insert into livros (titulo, autor, categoria_id, quantidade) values (%s, %s, (select id from categorias where nome = %s), %s)", (nome, autor, categoria, quantidade))
+            cursor.execute("INSERT INTO livros (titulo, autor, categoria_id, quantidade) "
+                           "VALUES (%s, %s, %s, %s)",
+                           (nome, autor, categoria_existente[0], quantidade))
             conn.commit()
+            print("Livro adicionado com sucesso.")
         cursor.close()
         conn.close()
     else:
@@ -77,45 +90,70 @@ def atualizar_livro():
             conn.close()
             return
 
-        cursor.execute("SELECT * FROM livros WHERE titulo = %s", (nome_antigo,))
+        cursor.execute(
+            "SELECT id, titulo, autor, categoria_id, quantidade "
+            "FROM livros WHERE titulo = %s",
+            (nome_antigo,),
+        )
         livro_existente = cursor.fetchone()
         
         if livro_existente:
-            nome_novo = input("Digite o novo nome do livro: ").capitalize()
-            autor_novo = input("Digite o novo autor do livro: ").title()
-            categoria_nova = input("Digite a nova categoria do livro: ").capitalize()
-            quantidade_nova = input("Digite a nova quantidade de exemplares do livro: ")
+            titulo_digitado = input(
+                "Digite o novo nome do livro (vazio para manter): "
+            ).strip()
+            autor_digitado = input(
+                "Digite o novo autor do livro (vazio para manter): "
+            ).strip()
+            categoria_digitada = input(
+                "Digite a nova categoria do livro (vazio para manter): "
+            ).strip()
+            quantidade_digitada = input(
+                "Digite a nova quantidade (vazio para manter): "
+            ).strip()
 
-            if not nome_novo.strip():
-                print("Nome do livro não pode ser vazio.")
-                cursor.close()
-                conn.close()
-                return
-            if not autor_novo.strip():
-                print("Autor do livro não pode ser vazio.")
-                cursor.close()
-                conn.close()
-                return
-            if not categoria_nova.strip():
-                print("Nome da categoria não pode ser vazio.")
-                cursor.close()
-                conn.close()
-                return
-            if not quantidade_nova.strip():
-                print("Quantidade de exemplares não pode ser vazia.")
-                cursor.close()
-                conn.close()
-                return
-            
-            cursor.execute("SELECT * FROM categorias WHERE nome = %s", (categoria_nova,))
-            categoria_existente = cursor.fetchone()
-            
-            if not categoria_existente:
-                print("Categoria não encontrada.")
-            else:
-                cursor.execute("UPDATE livros SET titulo = %s, autor = %s, categoria_id = (SELECT id FROM categorias WHERE nome = %s), quantidade = %s WHERE titulo = %s", (nome_novo, autor_novo, categoria_nova, quantidade_nova, nome_antigo))
-                conn.commit()
-                print("Livro atualizado com sucesso.")
+            titulo_novo = (
+                titulo_digitado.capitalize() if titulo_digitado else livro_existente[1]
+            )
+            autor_novo = (
+                autor_digitado.title() if autor_digitado else livro_existente[2]
+            )
+            categoria_id = livro_existente[3]
+            quantidade_nova = livro_existente[4]
+
+            if categoria_digitada:
+                cursor.execute(
+                    "SELECT id FROM categorias WHERE nome = %s",
+                    (categoria_digitada.capitalize(),),
+                )
+                categoria_existente = cursor.fetchone()
+
+                if not categoria_existente:
+                    print("Categoria não encontrada.")
+                    cursor.close()
+                    conn.close()
+                    return
+
+                categoria_id = categoria_existente[0]
+
+            if quantidade_digitada:
+                quantidade_validada = _ler_quantidade(quantidade_digitada)
+                if quantidade_validada is None:
+                    print(
+                        "Quantidade deve ser um número inteiro maior ou igual a zero."
+                    )
+                    cursor.close()
+                    conn.close()
+                    return
+
+                quantidade_nova = quantidade_validada
+
+            cursor.execute(
+                "UPDATE livros SET titulo = %s, autor = %s, categoria_id = %s, "
+                "quantidade = %s WHERE titulo = %s",
+                (titulo_novo, autor_novo, categoria_id, quantidade_nova, nome_antigo),
+            )
+            conn.commit()
+            print("Livro atualizado com sucesso.")
         else:
             print("Livro não encontrado.")
         
@@ -140,9 +178,13 @@ def deletar_livro():
         livro_existente = cursor.fetchone()
         
         if livro_existente:
-            cursor.execute("DELETE FROM livros WHERE titulo = %s", (nome,))
-            conn.commit()
-            print("Livro deletado com sucesso.")
+            try:
+                cursor.execute("DELETE FROM livros WHERE titulo = %s", (nome,))
+                conn.commit()
+                print("Livro deletado com sucesso.")
+            except IntegrityError:
+                conn.rollback()
+                print("Não é possível excluir o livro porque há empréstimos associados.")
         else:
             print("Livro não encontrado.")
         

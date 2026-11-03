@@ -1,5 +1,5 @@
 from config import conexao
-from sistema import gerenciarUsuarios,gerenciarCategorias, gerenciarLivros, gerenciarEmprestimos
+from sistemaBiblioteca import gerenciarUsuarios,gerenciarCategorias, gerenciarLivros, gerenciarEmprestimos
 
 
 def main():

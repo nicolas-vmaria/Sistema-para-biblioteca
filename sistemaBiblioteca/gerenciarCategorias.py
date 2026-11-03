@@ -1,4 +1,5 @@
 from config import conexao
+from mysql.connector import IntegrityError
 
 def adicionar_categoria():
     conn = conexao.conectar()
@@ -83,9 +84,13 @@ def deletar_categoria():
         cursor.execute("SELECT * FROM categorias WHERE nome = %s", (nome,))
         categoria = cursor.fetchone()
         if categoria:
-            cursor.execute("DELETE FROM categorias WHERE nome = %s", (nome,))
-            conn.commit()
-            print("Categoria deletada com sucesso.")
+            try:
+                cursor.execute("DELETE FROM categorias WHERE nome = %s", (nome,))
+                conn.commit()
+                print("Categoria deletada com sucesso.")
+            except IntegrityError:
+                conn.rollback()
+                print("Não é possível excluir a categoria porque há livros associados.")
         else:
             print("Categoria não encontrada.")
         cursor.close()

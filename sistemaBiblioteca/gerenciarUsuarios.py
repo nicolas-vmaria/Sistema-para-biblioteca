@@ -1,5 +1,6 @@
 from config import conexao
-import hashlib
+from config.senhas import gerar_hash_senha
+from mysql.connector import IntegrityError
 
 def adicionar_usuario():
     conn = conexao.conectar()
@@ -20,7 +21,7 @@ def adicionar_usuario():
             print("Senha do usuário não pode ser vazia.")
             conn.close()
             return
-        senha = hashlib.sha256(senha.encode()).hexdigest()
+        senha = gerar_hash_senha(senha)
         
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM usuarios WHERE email = %s", (email,))
@@ -77,7 +78,7 @@ def atualizar_usuario():
             novo_email = input(f"Digite o novo email (atual: {usuario[2]}): ") or usuario[2]
             nova_senha = input("Digite a nova senha (deixe em branco para não alterar): ")
             if nova_senha:
-                nova_senha = hashlib.sha256(nova_senha.encode()).hexdigest()
+                nova_senha = gerar_hash_senha(nova_senha)
             else:
                 nova_senha = usuario[3]  # Mantém a senha atual
             
@@ -110,9 +111,13 @@ def deletar_usuario():
         if usuario:
             confirmacao = input(f"Tem certeza que deseja deletar o usuário {usuario[1]}? (s/n): ")
             if confirmacao.lower() == 's':
-                cursor.execute("DELETE FROM usuarios WHERE id = %s", (id_usuario,))
-                conn.commit()
-                print("Usuário deletado com sucesso.")
+                try:
+                    cursor.execute("DELETE FROM usuarios WHERE id = %s", (id_usuario,))
+                    conn.commit()
+                    print("Usuário deletado com sucesso.")
+                except IntegrityError:
+                    conn.rollback()
+                    print("Não é possível excluir o usuário porque há empréstimos associados.")
             else:
                 print("Operação cancelada.")
         else:
